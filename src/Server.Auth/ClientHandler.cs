@@ -3,24 +3,32 @@ using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using NLog;
 using Reborn.Utils;
+using Server.Auth.Net;
 
 namespace Server.Auth
 {
     internal class ClientHandler
     {
+        private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
+
         private readonly Socket _socket;
+
+        private readonly int _clientId;
+
         private readonly IPEndPoint _remoteEndPoint;
 
         private readonly byte[] _buffer;
 
-        public ClientHandler(Socket socket)
+        public ClientHandler(Socket socket, int clientId)
         {
             _socket = socket;
+            _clientId = clientId;
             _remoteEndPoint = (IPEndPoint)_socket.RemoteEndPoint;
             _buffer = new byte[512];
 
-            Console.WriteLine($"Accepted new connection from {_remoteEndPoint.Address}.");
+            Logger.Debug($"[{_clientId}] Accepted new connection from {_remoteEndPoint.Address}.");
         }
 
         public void WaitForData()
@@ -29,6 +37,17 @@ namespace Server.Auth
             {
                 _socket.BeginReceive(_buffer, 0, _buffer.Length, SocketFlags.None, ReceiveCallback, null);
             }
+        }
+        
+        public void SendPacket(byte[] rawPacket)
+        {
+            Logger.Warn($"[{_clientId}] Outgoing packet:{Environment.NewLine}" +
+                         $"Packet Length: {rawPacket.Length}{Environment.NewLine}" +
+                         $"Packet ID: {EncodeHelper.DecodeShort(new []{rawPacket[6], rawPacket[7]}, true)}{Environment.NewLine}" +
+                         $"Packet Hex dump:{Environment.NewLine}" +
+                         $"{HexUtils.HexDump(rawPacket)}");
+
+            _socket.Send(rawPacket);
         }
 
         private void ReceiveCallback(IAsyncResult ar)
@@ -41,127 +60,95 @@ namespace Server.Auth
                     _socket.Close();
                     _socket.Dispose();
 
-                    Console.WriteLine($"Connection from {_remoteEndPoint.Address} was dropped.");
+                    Logger.Debug($"[{_clientId}] Connection from {_remoteEndPoint.Address} was dropped.");
                     return;
                 }
 
                 var packet = new byte[byteCount];
                 Buffer.BlockCopy(_buffer, 0, packet, 0, byteCount);
 
-                /* Packet processor */
-                Console.ForegroundColor = ConsoleColor.Cyan;
-                Console.WriteLine(BitConverter.ToString(packet));
+                /*  Packet 502 - RsLoginFail
 
-                /* Packet 602 - LsLoginFail
-                        packetList = new List<byte>(); // (?)
-                        packetList.AddRange(BitEndianConverter.GetBytes((short)5, true));
-                        packetList.AddRange(NetworkUtil.Pad(2));
-                        packetList.AddRange(BitEndianConverter.GetBytes((short)602, true)); // Packet ID
-                        packetList.AddRange(NetworkUtil.Pad(4));
-                        packetList.AddRange(BitEndianConverter.GetBytes(819, true)); // custom error
-                        packetList.AddRange(Encoding.Unicode.GetBytes("Some kind of custom error")); // custom error
-                        packetList.InsertRange(0, BitEndianConverter.GetBytes((short)(packetList.Count + 2), true));
-                        _socket.Send(packetList.ToArray());
+                    new Packet(502)
+                        .Append(EncodeHelper.CreatePadding(4))
+                        .Append(EncodeHelper.EncodeShort(1101, true));
                 */
 
-                /* test
-                        packetList = new List<byte>(); // (?)
-                        packetList.AddRange(BitEndianConverter.GetBytes((short)5, true));
-                        packetList.AddRange(NetworkUtil.Pad(2));
-                        packetList.AddRange(BitEndianConverter.GetBytes((short)602, true)); // Packet ID
-                        packetList.AddRange(Encoding.Default.GetBytes("This is a test."));
-                        packetList.InsertRange(0, BitEndianConverter.GetBytes((short)(packetList.Count + 2), true));
-                        _socket.Send(packetList.ToArray());
-                        Console.WriteLine(BitConverter.ToString(packetList.ToArray()));
-                        Console.WriteLine("Bytes: " + packetList.Count);
+                /*  Packet 602 - LsLoginFail
+
+                    new Packet(602)
+                        .Append(EncodeHelper.CreatePadding(4))
+                        .Append(EncodeHelper.EncodeInteger(819, true))                      // Custom error
+                        .Append(Encoding.Unicode.GetBytes("Some kind of custom error"));    // Custom error
                 */
 
                 var packetLength = EncodeHelper.DecodeShort(new[] { packet[1], packet[0] });
                 var packetHeader = packet[2]; // Not sure :)
 
-                Console.WriteLine($"Packet Length [Short]: {packetLength}");
-                Console.WriteLine($"Packet ID [Byte]: {packetHeader}");
-                Console.WriteLine($"Packet Raw: {Encoding.UTF8.GetString(packet)}");
-                Console.WriteLine($"Packet Raw Unicode: {Encoding.Unicode.GetString(packet)}");
-                Console.WriteLine($"Received bytes: {byteCount}");
+                Logger.Trace($"[{_clientId}] Incoming packet:{Environment.NewLine}" +
+                             $"Packet Length Raw: {packet.Length}{Environment.NewLine}" +
+                             $"Packet Length: {packetLength}{Environment.NewLine}" +
+                             $"Packet ID: {packetHeader}{Environment.NewLine}" +
+                             $"Packet Hex:{Environment.NewLine}" +
+                             $"{HexUtils.HexDump(packet)}");
 
-                var packetList = new List<byte>();
+                var packetList = new List<byte[]>();
                 switch (packetHeader)
                 {
-                    case 255: // Connect to port 8005??
-                        packetList.AddRange(BitEndianConverter.GetBytes((short)5, true));
-                        packetList.AddRange(EncodeHelper.CreatePadding(2));
-                        packetList.AddRange(BitEndianConverter.GetBytes((short)501, true)); // Packet ID
-                        packetList.AddRange(EncodeHelper.CreatePadding(4));
-                        packetList.Add(0x7F); // 127
-                        packetList.Add(0x0);  // 0
-                        packetList.Add(0x0);  // 0
-                        packetList.Add(0x1);  // 1
+                    case 255:
+                    {
+                        // Connect to port 8005??
+                        packetList.Add(new Packet(501)
+                            .Append(EncodeHelper.CreatePadding(4))
+                            .Append(0x74)
+                            .Append(0x0)
+                            .Append(0x0)
+                            .Append(0x1)
+                            .GetPacket());
 
                         break;
+                    }
+
                     case 5:
-                        /* packetList.AddRange(BitEndianConverter.GetBytes((short)5, true));
-                        packetList.AddRange(NetworkUtil.Pad(2));
-                        packetList.AddRange(BitEndianConverter.GetBytes((short)502, true)); // Packet ID
-                        packetList.AddRange(NetworkUtil.Pad(4));
-                        packetList.AddRange(BitEndianConverter.GetBytes((short)1101, true)); */
-
-                        Console.ForegroundColor = ConsoleColor.Green;
-
-                        packetList = new List<byte>(); // Show server list
-                        packetList.AddRange(BitEndianConverter.GetBytes((short)5, true));
-                        packetList.AddRange(EncodeHelper.CreatePadding(2));
-                        packetList.AddRange(BitEndianConverter.GetBytes((short)601, true)); // Packet ID
-                        packetList.AddRange(EncodeHelper.CreatePadding(4));
-                        packetList.AddRange(Encoding.ASCII.GetBytes("Cool"));
-                        packetList.AddRange(EncodeHelper.CreatePadding(42));
-                        packetList.AddRange(Encoding.Unicode.GetBytes("Test"));
-                        packetList.InsertRange(0, BitEndianConverter.GetBytes((short)(packetList.Count + 2), true));
-                        _socket.Send(packetList.ToArray());
-                        Console.WriteLine(BitConverter.ToString(packetList.ToArray()));
-                        Console.WriteLine("Bytes: " + packetList.Count);
-
-                        packetList = new List<byte>();
-
+                    {
+                        packetList.Add(new Packet(601)
+                            .Append(EncodeHelper.CreatePadding(4))
+                            .Append(Encoding.ASCII.GetBytes("Cool"))
+                            .Append(EncodeHelper.CreatePadding(42))
+                            .Append(Encoding.Unicode.GetBytes("Test"))
+                            .GetPacket());
                         break;
+                    }
 
                     case 3:
-                        packetList.AddRange(BitEndianConverter.GetBytes((short)3, true));
-                        packetList.AddRange(BitEndianConverter.GetBytes((short)1, true));
-                        packetList.AddRange(BitEndianConverter.GetBytes((short)2, true));
+                    {
+                        var tempPacket = new List<byte>();
 
+                        tempPacket.AddRange(EncodeHelper.EncodeShort(3, true));
+                        tempPacket.AddRange(EncodeHelper.EncodeShort(1, true));
+                        tempPacket.AddRange(EncodeHelper.EncodeShort(2, true));
+                        tempPacket.InsertRange(0, EncodeHelper.EncodeShort((short) (tempPacket.Count + 2), true));
+
+                        packetList.Add(tempPacket.ToArray());
                         break;
+                    }
                         
                     default:
-                        // Console.ForegroundColor = ConsoleColor.Red;
-                        // Console.WriteLine("Unknown packet, trying to respond with bullshit packet.");
-
-                        /* packetList.AddRange(BitEndianConverter.GetBytes((short)0, false));
-                        packetList.AddRange(BitEndianConverter.GetBytes((short)30, true));
-                        packetList.AddRange(BitEndianConverter.GetBytes((short)0, false));
-                        packetList.AddRange(BitEndianConverter.GetBytes((long)0, false)); */
+                        Logger.Error($"[{_clientId}] Incoming packet was not known.");
                         break;
                 }
 
                 if (packetList.Count > 0)
                 {
-                    packetList.InsertRange(0, BitEndianConverter.GetBytes((short)(packetList.Count + 2), true));
-
-                    Console.ForegroundColor = ConsoleColor.Green;
-                    Console.WriteLine(BitConverter.ToString(packetList.ToArray()));
-                    Console.WriteLine("Bytes: " + packetList.Count);
-
-                    _socket.Send(packetList.ToArray());
+                    foreach (var outgoingPacket in packetList)
+                    {
+                        SendPacket(outgoingPacket);
+                    }
                 }
-
-                /* Finalize */
-                Console.ResetColor();
             }
             catch (Exception exception)
             {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine(exception);
-                Console.ResetColor();
+                Logger.Error(exception, $"[{_clientId}] An exception occured during receive.");
             }
             finally
             {

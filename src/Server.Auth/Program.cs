@@ -1,7 +1,13 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 using System.Threading;
+using NLog;
+using Reborn.Utils;
+using Server.Auth.Config;
+using Server.Auth.Net;
 
 namespace Server.Auth
 {
@@ -17,14 +23,40 @@ namespace Server.Auth
     /// </summary>
     internal class Program
     {
+        private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
+
         private static bool _keepRunning;
 
         private static Socket _serverSocket;
 
+        private static int _nextClientId;
+
         public static void Main(string[] args)
         {
+            var packetList = new List<byte>(); // Show server list
+            packetList.AddRange(BitEndianConverter.GetBytes((short)5, true));
+            packetList.AddRange(EncodeHelper.CreatePadding(2));
+            packetList.AddRange(BitEndianConverter.GetBytes((short)601, true)); // Packet ID
+            packetList.AddRange(EncodeHelper.CreatePadding(4));
+            packetList.AddRange(Encoding.ASCII.GetBytes("Cool"));
+            packetList.AddRange(EncodeHelper.CreatePadding(42));
+            packetList.AddRange(Encoding.Unicode.GetBytes("Test"));
+            packetList.InsertRange(0, BitEndianConverter.GetBytes((short)(packetList.Count + 2), true));
+
+            var packett = new Packet(601)
+                .Append(EncodeHelper.CreatePadding(4))
+                .Append(Encoding.ASCII.GetBytes("Cool"))
+                .Append(EncodeHelper.CreatePadding(42))
+                .Append(Encoding.Unicode.GetBytes("Test"))
+                .GetPacket();
+
+            Console.WriteLine(BitConverter.ToString(packetList.ToArray()));
+            Console.WriteLine(BitConverter.ToString(packett));
+
             Console.Title = "QPangReborn | Server.Auth PROTOTYPE";
-            Console.WriteLine("Starting up Server.Auth.");
+
+            LogManager.Configuration = NLogConfig.Create();
+            Logger.Warn("Starting up Server.Auth.");
 
             _keepRunning = true;
             _serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
@@ -43,35 +75,38 @@ namespace Server.Auth
                     case "q":
                         _keepRunning = false;
                         break;
+                    default:
+                        Logger.Warn("Unknown command, available commands: exit, quit & q.");
+                        break;
                 }
             }
 
-            Console.WriteLine("Shutting down Server.Auth.");
+            Logger.Warn("Shutting down Server.Auth.");
 
             _serverSocket.Close();
             _serverSocket.Dispose();
 
-            Console.WriteLine("Press any key to exit.");
+            Logger.Warn("Press any key to exit.");
             Console.ReadKey();
         }
 
         private static void AcceptNewConnection()
         {
-            Console.WriteLine("Waiting for a new connection.");
+            Logger.Debug("Waiting for a new connection.");
 
             _serverSocket?.BeginAccept(AcceptConnection, null);
         }
 
         private static void AcceptConnection(IAsyncResult ar)
         {
-            if (_serverSocket == null)
+            if (_serverSocket == null || !_keepRunning)
             {
                 return;
             }
 
             var clientSocket = _serverSocket.EndAccept(ar);
 
-            new Thread(() => new ClientHandler(clientSocket).WaitForData())
+            new Thread(() => new ClientHandler(clientSocket, _nextClientId++).WaitForData())
             {
                 IsBackground = true
             }.Start();

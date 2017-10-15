@@ -60,7 +60,7 @@ namespace Server.Lobby
 
         private static void AcceptConnection(IAsyncResult ar)
         {
-            if (_serverSocket == null)
+            if (_serverSocket == null || !_keepRunning)
             {
                 return;
             }
