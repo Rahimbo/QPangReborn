@@ -33,26 +33,6 @@ namespace Server.Auth
 
         public static void Main(string[] args)
         {
-            var packetList = new List<byte>(); // Show server list
-            packetList.AddRange(BitEndianConverter.GetBytes((short)5, true));
-            packetList.AddRange(EncodeHelper.CreatePadding(2));
-            packetList.AddRange(BitEndianConverter.GetBytes((short)601, true)); // Packet ID
-            packetList.AddRange(EncodeHelper.CreatePadding(4));
-            packetList.AddRange(Encoding.ASCII.GetBytes("Cool"));
-            packetList.AddRange(EncodeHelper.CreatePadding(42));
-            packetList.AddRange(Encoding.Unicode.GetBytes("Test"));
-            packetList.InsertRange(0, BitEndianConverter.GetBytes((short)(packetList.Count + 2), true));
-
-            var packett = new Packet(601)
-                .Append(EncodeHelper.CreatePadding(4))
-                .Append(Encoding.ASCII.GetBytes("Cool"))
-                .Append(EncodeHelper.CreatePadding(42))
-                .Append(Encoding.Unicode.GetBytes("Test"))
-                .GetPacket();
-
-            Console.WriteLine(BitConverter.ToString(packetList.ToArray()));
-            Console.WriteLine(BitConverter.ToString(packett));
-
             Console.Title = "QPangReborn | Server.Auth PROTOTYPE";
 
             LogManager.Configuration = NLogConfig.Create();

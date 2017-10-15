@@ -122,14 +122,7 @@ namespace Server.Auth
 
                     case 3:
                     {
-                        var tempPacket = new List<byte>();
-
-                        tempPacket.AddRange(EncodeHelper.EncodeShort(3, true));
-                        tempPacket.AddRange(EncodeHelper.EncodeShort(1, true));
-                        tempPacket.AddRange(EncodeHelper.EncodeShort(2, true));
-                        tempPacket.InsertRange(0, EncodeHelper.EncodeShort((short) (tempPacket.Count + 2), true));
-
-                        packetList.Add(tempPacket.ToArray());
+                        packetList.Add(new Packet(2).GetPacket());
                         break;
                     }
                         

@@ -34,7 +34,7 @@ namespace Server.Auth.Net
             var finalPacket = new List<byte>();
 
             finalPacket.AddRange(EncodeHelper.EncodeShort((short) (Payload.Count + 8), true));      // Packet length.
-            finalPacket.AddRange(EncodeHelper.EncodeInteger(5, true));                              // Unknown integer.
+            finalPacket.AddRange(EncodeHelper.CreatePadding(4));                                    // Unknown.
             finalPacket.AddRange(EncodeHelper.EncodeShort(Header, true));                           // Packet header.
             finalPacket.AddRange(Payload);
 
