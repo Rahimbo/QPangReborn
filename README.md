@@ -30,3 +30,9 @@ We have to bypass the launcher (`QPang.exe`) because the `Server.Updater` is not
 - https://qpangreborn.tumblr.com (Dutch)
 - https://www.qpang.nl
 - https://soundcloud.com/qpangreborn
+
+## Resources
+
+- [Reverse Engineering Dead Protocols](https://media.ccc.de/v/31c3_-_5956_-_en_-_saal_2_-_201412281400_-_cyber_necromancy_-_joseph_tartaro_-_matthew_halchyshak)
+- [How do modders revive online features in old console games without the server files?](https://www.reddit.com/r/ReverseEngineering/comments/1uognx/how_do_modders_revive_online_features_in_old/cekbbt4/)
+- [Is it still possible to reverse engineer an old MMORPG with just the game client?](http://forum.ragezone.com/f860/reverse-engineer-mmorpg-game-client-1079352/)
